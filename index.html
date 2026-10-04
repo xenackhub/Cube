@@ -161,8 +161,12 @@
     font: inherit;
   }
   .actions button:hover, nav button:hover, .chip:hover { border-color: var(--yellow); }
-  .alg-en { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+  .viewer { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 14px; align-items: center; }
+  #cubeCanvas { width: 100%; height: 280px; display: block; border-radius: 14px; background: linear-gradient(180deg, #eef3f9, #d5deea); touch-action: none; cursor: grab; }
+  .vbtns { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  @media (max-width: 700px) { .viewer { grid-template-columns: 1fr; } }
   .iso { width: 132px; height: 108px; flex: none; background: #f7f7f5; border-radius: 10px; }
+  .alg-en { font-size: .78rem; color: var(--muted); margin-top: 4px; }
   .note { font-size: .92rem; color: var(--muted); }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -213,6 +217,33 @@
   </div>
 </nav>
 <main>
+  <div id="viewer" class="panel">
+    <h2>ลูกบาศก์ 3D</h2>
+    <p class="note">ลากพื้นที่ว่างเพื่อหมุนดูทั้งลูก ลากสติกเกอร์เพื่อหมุนชั้น แบบเว็บตัวอย่าง. กดเล่น 3D ที่การ์ดสูตร จะโชว์เคสแล้วหมุนสูตรให้ดู.</p>
+    <div class="viewer">
+      <canvas id="cubeCanvas"></canvas>
+      <div>
+        <div id="vtitle"><b>ยังไม่ได้เลือกเคส</b></div>
+        <div id="valg" class="note">สีมาตรฐาน: เหลืองบน ขาวล่าง เขียวหน้า แดงขวา</div>
+        <div class="vbtns">
+          <button id="vPlay" class="chip" type="button">เล่นสูตร</button>
+          <button id="vCase" class="chip" type="button">ดูเคส</button>
+          <button id="vReset" class="chip" type="button">รีเซ็ต</button>
+          <button id="vScramble" class="chip" type="button">สลับลูก</button>
+        </div>
+        <div class="vbtns">
+          <button class="chip" type="button" data-move="U">บนซ้าย</button>
+          <button class="chip" type="button" data-move="U'">บนขวา</button>
+          <button class="chip" type="button" data-move="R">ขวาขึ้น</button>
+          <button class="chip" type="button" data-move="R'">ขวาลง</button>
+          <button class="chip" type="button" data-move="F">หน้าขวา</button>
+          <button class="chip" type="button" data-move="F'">หน้าซ้าย</button>
+          <button class="chip" type="button" data-move="y">หมุนบนซ้าย</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="tools">
     <input id="q" type="search" placeholder="ค้นหาชื่อเคส หรือสูตร เช่น sune, ขวาขึ้น, R U R'" />
     <button id="drill" class="chip">สุ่มเคสให้ฝึก</button>
@@ -284,6 +315,7 @@
   <footer>สูตรอ้างอิงชุดมาตรฐาน CFOP ที่ใช้ในชุมชนสปีดคิวบ์ (แนว J Perm / Speedsolving wiki). บางเคสมีสูตรอื่นที่เร็วกว่าตามถนัดมือ — เลือกสูตรที่นิ้วคล่องกว่าได้.</footer>
 </main>
 <div class="toast" id="toast">คัดลอกแล้ว</div>
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 <script>
 const learned = new Set(JSON.parse(localStorage.getItem("cfop-learned") || "[]"));
 function saveLearned() {
@@ -612,6 +644,10 @@ function card(item, kind) {
     mark.textContent = learned.has(key) ? "จำแล้ว" : "ติ๊กว่าจำ";
   };
   actions.append(copy, mark);
+  const play = document.createElement("button");
+  play.textContent = "เล่น 3D";
+  play.onclick = () => { if (window.playCase) window.playCase(item, kind); };
+  actions.append(play);
   el.appendChild(actions);
   return el;
 }
@@ -670,6 +706,192 @@ document.getElementById("drill").onclick = () => {
   pick.style.outline = "2px solid #f5c542";
   setTimeout(() => pick.style.outline = "", 1600);
 };
+
+const MOVE = {
+  R: ["x", 1, 1], "R'": ["x", 1, -1], R2: ["x", 1, 2],
+  L: ["x", -1, -1], "L'": ["x", -1, 1], L2: ["x", -1, 2],
+  U: ["y", 1, -1], "U'": ["y", 1, 1], U2: ["y", 1, 2],
+  D: ["y", -1, 1], "D'": ["y", -1, -1], D2: ["y", -1, 2],
+  F: ["z", 1, -1], "F'": ["z", 1, 1], F2: ["z", 1, 2],
+  B: ["z", -1, 1], "B'": ["z", -1, -1], B2: ["z", -1, 2],
+  M: ["x", 0, -1], "M'": ["x", 0, 1], M2: ["x", 0, 2],
+  E: ["y", 0, 1], "E'": ["y", 0, -1], E2: ["y", 0, 2],
+  S: ["z", 0, -1], "S'": ["z", 0, 1], S2: ["z", 0, 2],
+  x: ["x", null, 1], "x'": ["x", null, -1], x2: ["x", null, 2],
+  y: ["y", null, -1], "y'": ["y", null, 1], y2: ["y", null, 2],
+  z: ["z", null, -1], "z'": ["z", null, 1], z2: ["z", null, 2]
+};
+const WIDE = { r: ["R", "M'"], "r'": ["R'", "M"], r2: ["R2", "M2"], l: ["L", "M"], "l'": ["L'", "M'"], l2: ["L2", "M2"], u: ["U", "E'"], "u'": ["U'", "E"], u2: ["U2", "E2"], d: ["D", "E"], "d'": ["D'", "E'"], d2: ["D2", "E2"], f: ["F", "S"], "f'": ["F'", "S'"], f2: ["F2", "S2"] };
+let currentAlg = "R U R' U R U2 R'";
+let cubeApi = null;
+
+function parseMoves(alg) {
+  return String(alg).replace(/[()\[\]]/g, " ").split(/\s+/).filter(Boolean).flatMap(tok => WIDE[tok] || [tok]).filter(tok => MOVE[tok]);
+}
+function invertMoves(list) {
+  return list.slice().reverse().map(t => t.endsWith("2") ? t : t.endsWith("'") ? t.slice(0, -1) : t + "'");
+}
+
+function bootCube() {
+  if (!window.THREE) {
+    document.getElementById("valg").textContent = "โหลดภาพ 3D ไม่ได้ เปิดไฟล์ตอนมีเน็ตอีกครั้ง";
+    return;
+  }
+  const canvas = document.getElementById("cubeCanvas");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xe7eef6);
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+  camera.position.set(4.2, 3.4, 5.2);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.72));
+  const light = new THREE.DirectionalLight(0xffffff, 0.85);
+  light.position.set(4, 8, 6);
+  scene.add(light);
+  const cubeGroup = new THREE.Group();
+  cubeGroup.rotation.x = -0.35;
+  cubeGroup.rotation.y = 0.55;
+  scene.add(cubeGroup);
+  const geo = new THREE.BoxGeometry(0.94, 0.94, 0.94);
+  let cubies = [];
+  function makeMats(x, y, z) {
+    const black = 0x1a1a1a;
+    const cols = [x === 1 ? 0xe23b32 : black, x === -1 ? 0xf08a24 : black, y === 1 ? 0xf5c534 : black, y === -1 ? 0xf7f7f7 : black, z === 1 ? 0x3cb44b : black, z === -1 ? 0x2f6fed : black];
+    return cols.map(c => new THREE.MeshLambertMaterial({ color: c }));
+  }
+  function build() {
+    cubies.forEach(c => cubeGroup.remove(c));
+    cubies = [];
+    for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
+      if (!x && !y && !z) continue;
+      const mesh = new THREE.Mesh(geo, makeMats(x, y, z));
+      mesh.position.set(x, y, z);
+      cubeGroup.add(mesh);
+      cubies.push(mesh);
+    }
+  }
+  build();
+  let queue = [], turning = false;
+  function turn(token, ms, done) {
+    const spec = MOVE[token];
+    if (!spec) { done && done(); return; }
+    const [axis, layer, turns] = spec;
+    const pivot = new THREE.Group();
+    cubeGroup.add(pivot);
+    const selected = cubies.filter(c => layer === null || Math.round(c.position[axis]) === layer);
+    selected.forEach(c => pivot.attach(c));
+    const angle = turns * Math.PI / 2;
+    const start = performance.now();
+    function step(now) {
+      const t = Math.min(1, (now - start) / ms);
+      const ease = 1 - Math.pow(1 - t, 3);
+      pivot.rotation[axis] = angle * ease;
+      if (t < 1) requestAnimationFrame(step);
+      else {
+        pivot.updateMatrixWorld();
+        selected.forEach(c => cubeGroup.attach(c));
+        cubeGroup.remove(pivot);
+        selected.forEach(c => {
+          c.position.x = Math.round(c.position.x);
+          c.position.y = Math.round(c.position.y);
+          c.position.z = Math.round(c.position.z);
+          c.quaternion.x = Math.round(c.quaternion.x * 2) / 2;
+          c.quaternion.y = Math.round(c.quaternion.y * 2) / 2;
+          c.quaternion.z = Math.round(c.quaternion.z * 2) / 2;
+          c.quaternion.w = Math.round(c.quaternion.w * 2) / 2;
+          c.quaternion.normalize();
+        });
+        done && done();
+      }
+    }
+    requestAnimationFrame(step);
+  }
+  function pump() {
+    if (turning) return;
+    const job = queue.shift();
+    if (!job) return;
+    turning = true;
+    turn(job.token, job.ms, () => { turning = false; pump(); });
+  }
+  function enqueue(list, ms) {
+    list.forEach(token => queue.push({ token, ms }));
+    pump();
+  }
+  function resize() {
+    const w = canvas.clientWidth || 300, h = canvas.clientHeight || 280;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  function frame() { resize(); renderer.render(scene, camera); requestAnimationFrame(frame); }
+  frame();
+  const ray = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  let drag = null;
+  function setPointer(e) {
+    const rec = canvas.getBoundingClientRect();
+    pointer.x = ((e.clientX - rec.left) / rec.width) * 2 - 1;
+    pointer.y = -((e.clientY - rec.top) / rec.height) * 2 + 1;
+  }
+  canvas.addEventListener("pointerdown", e => {
+    canvas.setPointerCapture(e.pointerId);
+    setPointer(e);
+    ray.setFromCamera(pointer, camera);
+    const hit = ray.intersectObjects(cubies)[0];
+    drag = { x: e.clientX, y: e.clientY, hit, turned: false, orbit: !hit };
+    canvas.style.cursor = "grabbing";
+  });
+  canvas.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (drag.orbit) {
+      cubeGroup.rotation.y += dx * 0.012;
+      cubeGroup.rotation.x += dy * 0.012;
+      drag.x = e.clientX; drag.y = e.clientY;
+      return;
+    }
+    if (drag.turned || Math.hypot(dx, dy) < 16) return;
+    const normal = drag.hit.face.normal.clone().transformDirection(drag.hit.object.matrixWorld);
+    const ax = Math.abs(normal.x), ay = Math.abs(normal.y), az = Math.abs(normal.z);
+    let faceAxis = "y";
+    if (ax > ay && ax > az) faceAxis = "x";
+    else if (az > ay) faceAxis = "z";
+    const layer = Math.round(drag.hit.object.position[faceAxis]);
+    const horiz = Math.abs(dx) > Math.abs(dy);
+    let turnAxis = faceAxis === "y" ? (horiz ? "z" : "x") : faceAxis === "x" ? (horiz ? "z" : "y") : (horiz ? "y" : "x");
+    if (turnAxis === faceAxis) turnAxis = faceAxis === "y" ? "x" : "y";
+    const sign = (horiz ? dx : dy) > 0 ? 1 : -1;
+    const dir = faceAxis === "y" ? -sign : sign;
+    const token = Object.keys(MOVE).find(k => MOVE[k][0] === turnAxis && MOVE[k][1] === layer && MOVE[k][2] === (dir > 0 ? 1 : -1));
+    if (token) enqueue([token], 140);
+    drag.turned = true;
+  });
+  canvas.addEventListener("pointerup", () => { drag = null; canvas.style.cursor = "grab"; });
+  cubeApi = { build, enqueue };
+  document.getElementById("vReset").onclick = () => { queue = []; build(); };
+  document.getElementById("vScramble").onclick = () => {
+    const faces = ["R", "U", "F", "L", "D", "B"];
+    const seq = Array.from({ length: 18 }, () => faces[Math.floor(Math.random() * 6)] + ["", "'", "2"][Math.floor(Math.random() * 3)]);
+    enqueue(seq, 90);
+  };
+  document.getElementById("vCase").onclick = () => { queue = []; build(); enqueue(invertMoves(parseMoves(currentAlg)), 70); };
+  document.getElementById("vPlay").onclick = () => enqueue(parseMoves(currentAlg), 280);
+  document.querySelectorAll("[data-move]").forEach(b => b.onclick = () => enqueue([b.dataset.move], 180));
+}
+window.playCase = (item, kind) => {
+  currentAlg = item.alg;
+  document.getElementById("vtitle").innerHTML = "<b>" + kind + " " + item.id + " · " + (item.name || item.group || "") + "</b>";
+  document.getElementById("valg").textContent = toThai(item.alg);
+  document.getElementById("viewer").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (!cubeApi) return;
+  cubeApi.build();
+  const moves = parseMoves(item.alg);
+  if (!moves.length) return;
+  cubeApi.enqueue(invertMoves(moves), 60);
+  setTimeout(() => cubeApi.enqueue(moves, 280), moves.length * 70 + 400);
+};
+bootCube();
+
 </script>
 </body>
 </html>
